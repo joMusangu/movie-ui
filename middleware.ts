@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 // Define paths that require authentication
-const protectedPaths = ["/reservations", "/profile"]
+
 
 // Define paths that require admin access
 const adminPaths = ["/admin"]
@@ -20,9 +20,7 @@ export function middleware(request: NextRequest) {
   const isAdmin = adminCookie?.value === "true"
 
   // Redirect unauthenticated users trying to access protected routes
-  if (protectedPaths.some((path) => pathname.startsWith(path)) && !isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url))
-  }
+ 
 
   // Redirect non-admin users trying to access admin routes
   if (adminPaths.some((path) => pathname.startsWith(path)) && (!isAuthenticated || !isAdmin)) {
