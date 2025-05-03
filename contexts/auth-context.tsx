@@ -23,6 +23,7 @@ export interface ProfileUpdateData {
   email?: string
   current_password?: string
   new_password?: string
+  username: string // Added username for identification
 }
 
 // Define auth context type
@@ -35,6 +36,7 @@ interface AuthContextType {
   updateProfile: (data: ProfileUpdateData) => Promise<void>
   isAuthenticated: boolean
   isAdmin: boolean
+  goToProfile: () => void
 }
 
 // Create the auth context
@@ -56,8 +58,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const userData = await authAPI.getCurrentUser()
-        setUser(userData)
+        // If there's a username in localStorage, fetch that user
+        const storedUsername = localStorage.getItem("username")
+        if (storedUsername) {
+          const userData = await authAPI.getCurrentUser(storedUsername)
+          setUser(userData)
+        } else {
+          setUser(null)
+        }
       } catch (error) {
         setUser(null)
       } finally {
@@ -74,6 +82,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const userData = await authAPI.login(username, password)
       setUser(userData)
+      // Store username in localStorage
+      localStorage.setItem("username", username)
+      console.log("Stored username in localStorage:", username) // Debug log
       toast({
         title: "Login successful",
         description: "You have been logged in successfully.",
@@ -119,6 +130,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       await authAPI.logout()
       setUser(null)
+      // Remove username from localStorage
+      localStorage.removeItem("username")
       toast({
         title: "Logout successful",
         description: "You have been logged out successfully.",
@@ -139,7 +152,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateProfile = async (data: ProfileUpdateData) => {
     setIsLoading(true)
     try {
-      const updatedUser = await authAPI.updateUserProfile(data)
+      // Get the current username from state or localStorage
+      const username = user?.username || localStorage.getItem("username")
+
+      if (!username) {
+        throw new Error("No username found. Please log in again.")
+      }
+
+      // Add username to the data
+      const updatedData = {
+        ...data,
+        username: username,
+      }
+
+      const updatedUser = await authAPI.updateUserProfile(updatedData)
       setUser((prevUser) => ({
         ...prevUser!,
         ...updatedUser,
@@ -160,6 +186,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
+  const goToProfile = () => {
+    // Always go to profile, regardless of authentication status
+    router.push("/profile")
+  }
+
   const value = {
     user,
     isLoading,
@@ -169,6 +200,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateProfile,
     isAuthenticated: !!user,
     isAdmin: user?.is_admin || false,
+    goToProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

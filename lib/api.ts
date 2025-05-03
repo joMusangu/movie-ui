@@ -63,19 +63,33 @@ export const authAPI = {
     })
   },
 
-  getCurrentUser: async () => {
+  getCurrentUser: async (username: string) => {
     try {
-      return await fetchAPI("/user/current/")
+      return await fetchAPI(`/user/current/?username=${username}`)
     } catch (error) {
       return null
     }
   },
 
-  getUserProfile: async () => {
-    return fetchAPI("/user/profile/")
+  getUserProfile: async (username: string) => {
+    try {
+      return await fetchAPI(`/user/profile/?username=${username}`)
+    } catch (error) {
+      // Return a default guest profile instead of throwing an error
+      return {
+        id: 0,
+        username: "Guest",
+        email: "",
+        first_name: "",
+        last_name: "",
+        is_admin: false,
+        date_joined: new Date().toISOString(),
+      }
+    }
   },
 
   updateUserProfile: async (data: {
+    username: string
     first_name?: string
     last_name?: string
     email?: string
@@ -128,23 +142,23 @@ export const ratingsAPI = {
     return fetchAPI(`/movies/${movieId}/ratings/`)
   },
 
-  submitRating: async (movieId: string, data: { score: number; comment?: string }) => {
+  submitRating: async (movieId: string, data: { score: number; comment?: string; username?: string }) => {
     return fetchAPI(`/movies/${movieId}/ratings/`, {
       method: "POST",
       body: JSON.stringify(data),
     })
   },
 
-  updateRating: async (movieId: string, data: { score: number; comment?: string }) => {
+  updateRating: async (movieId: string, data: { score: number; comment?: string; username?: string }) => {
     return fetchAPI(`/movies/${movieId}/ratings/`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
   },
 
-  getUserRating: async (movieId: string) => {
+  getUserRating: async (movieId: string, username: string) => {
     try {
-      return await fetchAPI(`/movies/${movieId}/ratings/user/`)
+      return await fetchAPI(`/movies/${movieId}/ratings/user/?username=${username}`)
     } catch (error) {
       return null
     }
@@ -187,20 +201,21 @@ export const showtimesAPI = {
 
 // Reservations API calls
 export const reservationsAPI = {
-  create: async (data: { showtimeId: string; ticketCount: number }) => {
+  create: async (data: { showtimeId: string; ticketCount: number; username: string }) => {
     return fetchAPI("/reservations/create/", {
       method: "POST",
       body: JSON.stringify(data),
     })
   },
 
-  getUserReservations: async () => {
-    return fetchAPI("/reservations/user/")
+  getUserReservations: async (username: string) => {
+    return fetchAPI(`/reservations/user/?username=${username}`)
   },
 
-  cancel: async (id: string) => {
+  cancel: async (id: string, username: string) => {
     return fetchAPI(`/reservations/${id}/cancel/`, {
       method: "DELETE",
+      body: JSON.stringify({ username }),
     })
   },
 }
@@ -217,9 +232,10 @@ export const adminAPI = {
     })
   },
 
-  demoteUser: async (userId: string) => {
+  demoteUser: async (userId: string, adminUsername: string) => {
     return fetchAPI(`/admin/users/${userId}/demote/`, {
       method: "POST",
+      body: JSON.stringify({ admin_username: adminUsername }),
     })
   },
 }

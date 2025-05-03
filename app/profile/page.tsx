@@ -3,26 +3,30 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 import { Navbar } from "@/components/navbar"
-import { useAuth, type ProfileUpdateData } from "@/contexts/auth-context"
+import { useToast } from "@/hooks/use-toast"
 import { Calendar, User, Lock } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function ProfilePage() {
-  const { user, isLoading, updateProfile, isAuthenticated } = useAuth()
-  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const { toast } = useToast()
 
   // Personal information state
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
+  const [homeAddress, setHomeAddress] = useState("")
   const [isUpdatingInfo, setIsUpdatingInfo] = useState(false)
+  const [updateSuccess, setUpdateSuccess] = useState(false)
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("")
@@ -30,22 +34,70 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [passwordError, setPasswordError] = useState("")
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
 
-  // Initialize form with user data
+  // Fetch user profile data
   useEffect(() => {
-    if (user) {
-      setFirstName(user.first_name || "")
-      setLastName(user.last_name || "")
-      setEmail(user.email || "")
-    }
-  }, [user])
+    const fetchUserProfile = async () => {
+      try {
+        const username = localStorage.getItem("username")
 
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push("/login")
+        if (!username) {
+          // Set default guest profile if no username is found
+          setUser({
+            username: "Guest",
+            email: "",
+            first_name: "",
+            last_name: "",
+            date_joined: new Date().toISOString(),
+          })
+          setIsLoading(false)
+          return
+        }
+
+        const response = await fetch(`http://localhost:8000/api/user/profile/?username=${username}`, {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          credentials: "include",
+        })
+
+        if (response.ok) {
+          const userData = await response.json()
+          setUser(userData)
+          setFirstName(userData.first_name || "")
+          setLastName(userData.last_name || "")
+          setEmail(userData.email || "")
+          setHomeAddress(userData.home_address || "")
+        } else {
+          // Set default guest profile if API call fails
+          setUser({
+            username: "Guest",
+            email: "",
+            first_name: "",
+            last_name: "",
+            date_joined: new Date().toISOString(),
+          })
+          console.log("Using default guest profile")
+        }
+      } catch (error) {
+        console.error("Error fetching user profile:", error)
+        // Set default user instead of redirecting
+        setUser({
+          username: "Guest",
+          email: "",
+          first_name: "",
+          last_name: "",
+          date_joined: new Date().toISOString(),
+        })
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }, [isLoading, isAuthenticated, router])
+
+    fetchUserProfile()
+  }, [])
 
   // Format date
   const formatDate = (dateString?: string) => {
@@ -57,17 +109,65 @@ export default function ProfilePage() {
   const handleUpdateInfo = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsUpdatingInfo(true)
+    setUpdateSuccess(false)
+
+    const username = localStorage.getItem("username")
+
+    if (!username) {
+      toast({
+        title: "Update failed",
+        description: "You need to be logged in to update your profile.",
+        variant: "destructive",
+      })
+      setIsUpdatingInfo(false)
+      return
+    }
 
     try {
-      const data: ProfileUpdateData = {
-        first_name: firstName,
-        last_name: lastName,
-        email,
-      }
+      const response = await fetch("http://localhost:8000/api/user/profile/", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          username: username, // Include the username
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          home_address: homeAddress,
+        }),
+      })
 
-      await updateProfile(data)
+      if (response.ok) {
+        const updatedUser = await response.json()
+        setUser(updatedUser)
+        setUpdateSuccess(true)
+        toast({
+          title: "Profile updated",
+          description: "Your profile information has been updated successfully.",
+        })
+
+        // Reset success message after a delay
+        setTimeout(() => {
+          setUpdateSuccess(false)
+        }, 3000)
+      } else {
+        // Handle unauthorized or other errors
+        toast({
+          title: "Update failed",
+          description: "You need to be logged in to update your profile.",
+          variant: "destructive",
+        })
+      }
     } catch (error) {
       console.error("Error updating profile:", error)
+      toast({
+        title: "Update failed",
+        description: "An error occurred while updating your profile.",
+        variant: "destructive",
+      })
     } finally {
       setIsUpdatingInfo(false)
     }
@@ -76,6 +176,14 @@ export default function ProfilePage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setPasswordError("")
+    setPasswordSuccess(false)
+
+    const username = localStorage.getItem("username")
+
+    if (!username) {
+      setPasswordError("You need to be logged in to change your password")
+      return
+    }
 
     // Validate passwords match
     if (newPassword !== confirmPassword) {
@@ -86,23 +194,50 @@ export default function ProfilePage() {
     setIsChangingPassword(true)
 
     try {
-      await updateProfile({
-        current_password: currentPassword,
-        new_password: newPassword,
+      const response = await fetch("http://localhost:8000/api/user/profile/", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          username: username, // Include the username
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
       })
 
-      // Clear password fields on success
-      setCurrentPassword("")
-      setNewPassword("")
-      setConfirmPassword("")
+      if (response.ok) {
+        setPasswordSuccess(true)
+        toast({
+          title: "Password updated",
+          description: "Your password has been changed successfully.",
+        })
+
+        // Clear password fields on success
+        setCurrentPassword("")
+        setNewPassword("")
+        setConfirmPassword("")
+
+        // Reset success message after a delay
+        setTimeout(() => {
+          setPasswordSuccess(false)
+        }, 3000)
+      } else {
+        // Handle unauthorized or other errors
+        const errorData = await response.json().catch(() => ({}))
+        setPasswordError(errorData.error || "You need to be logged in to change your password")
+      }
     } catch (error) {
       console.error("Error changing password:", error)
+      setPasswordError("An error occurred while changing your password")
     } finally {
       setIsChangingPassword(false)
     }
   }
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
       <div>
         <Navbar />
@@ -163,6 +298,12 @@ export default function ProfilePage() {
                 </CardHeader>
                 <form onSubmit={handleUpdateInfo}>
                   <CardContent className="space-y-4">
+                    {updateSuccess && (
+                      <Alert className="bg-green-50 text-green-800 border-green-200">
+                        <AlertDescription>Your profile has been updated successfully!</AlertDescription>
+                      </Alert>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="first-name">First Name</Label>
@@ -197,6 +338,17 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-2">
+                      <Label htmlFor="home-address">Home Address</Label>
+                      <Textarea
+                        id="home-address"
+                        value={homeAddress}
+                        onChange={(e) => setHomeAddress(e.target.value)}
+                        placeholder="Enter your home address"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
                       <Label htmlFor="username">Username</Label>
                       <Input id="username" value={user.username} disabled className="bg-muted" />
                       <p className="text-sm text-muted-foreground">Username cannot be changed</p>
@@ -219,6 +371,12 @@ export default function ProfilePage() {
                 </CardHeader>
                 <form onSubmit={handleChangePassword}>
                   <CardContent className="space-y-4">
+                    {passwordSuccess && (
+                      <Alert className="bg-green-50 text-green-800 border-green-200">
+                        <AlertDescription>Your password has been changed successfully!</AlertDescription>
+                      </Alert>
+                    )}
+
                     <div className="space-y-2">
                       <Label htmlFor="current-password">Current Password</Label>
                       <Input

@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { StarRating } from "@/components/star-rating"
 import { useAuth } from "@/contexts/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { ratingsAPI } from "@/lib/api"
 import { Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
@@ -38,14 +37,24 @@ export function MovieRatingForm({ movieId, onRatingSubmitted }: MovieRatingFormP
   // Fetch user's existing rating if authenticated
   useEffect(() => {
     const fetchUserRating = async () => {
-      if (!isAuthenticated) {
+      const username = localStorage.getItem("username")
+
+      if (!username) {
         setIsLoading(false)
         return
       }
 
       try {
-        const data = await ratingsAPI.getUserRating(movieId)
-        if (data) {
+        // Direct API call instead of using the ratingsAPI helper
+        const response = await fetch(`http://localhost:8000/api/movies/${movieId}/ratings/user/?username=${username}`, {
+          credentials: "include",
+          headers: {
+            Accept: "application/json",
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
           setUserRating(data.score)
           setComment(data.comment || "")
           setHasExistingRating(true)
@@ -59,7 +68,7 @@ export function MovieRatingForm({ movieId, onRatingSubmitted }: MovieRatingFormP
     }
 
     fetchUserRating()
-  }, [movieId, isAuthenticated])
+  }, [movieId])
 
   const handleRatingChange = (rating: number) => {
     setUserRating(rating)
@@ -69,16 +78,8 @@ export function MovieRatingForm({ movieId, onRatingSubmitted }: MovieRatingFormP
     setComment(e.target.value)
   }
 
+  // Update the handleSubmit function to include the username
   const handleSubmit = async () => {
-    if (!isAuthenticated) {
-      toast({
-        title: "Login required",
-        description: "Please login to rate this movie.",
-        variant: "destructive",
-      })
-      return
-    }
-
     if (userRating === 0) {
       toast({
         title: "Rating required",
@@ -88,14 +89,35 @@ export function MovieRatingForm({ movieId, onRatingSubmitted }: MovieRatingFormP
       return
     }
 
+    const username = localStorage.getItem("username")
+
     setIsSubmitting(true)
 
     try {
-      const method = hasExistingRating ? ratingsAPI.updateRating : ratingsAPI.submitRating
-      await method(movieId, {
-        score: userRating,
-        comment,
+      // Direct fetch call with proper headers
+      const url = `http://localhost:8000/api/movies/${movieId}/ratings/`
+      const method = hasExistingRating ? "PUT" : "POST"
+
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest", // This helps with CSRF protection
+        },
+        credentials: "include", // Important for sending cookies
+        body: JSON.stringify({
+          score: userRating,
+          comment: comment,
+          username: username, // Include the username if available
+        }),
       })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Rating submission error:", response.status, errorData)
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
 
       setHasExistingRating(true)
       setIsSuccess(true)
@@ -115,6 +137,7 @@ export function MovieRatingForm({ movieId, onRatingSubmitted }: MovieRatingFormP
         setIsSuccess(false)
       }, 3000)
     } catch (error) {
+      console.error("Error submitting rating:", error)
       toast({
         title: "Error",
         description: "Failed to submit rating. Please try again.",

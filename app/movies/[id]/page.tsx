@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +10,7 @@ import { Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Navbar } from "@/components/navbar"
 import { useAuth } from "@/contexts/auth-context"
-import { moviesAPI, reservationsAPI } from "@/lib/api"
+import { moviesAPI } from "@/lib/api"
 import {
   Dialog,
   DialogContent,
@@ -49,6 +49,7 @@ interface Showtime {
 
 export default function MovieDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const { id } = params
   const [movie, setMovie] = useState<Movie | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -57,8 +58,9 @@ export default function MovieDetailPage() {
   const [ticketCount, setTicketCount] = useState(1)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("showtimes")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
 
   // Fetch movie details from API
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function MovieDetailPage() {
 
         if (data && data.showtimes.length > 0) {
           // Set default selected date to the first available date
-          const dates = Array.from(new Set<string>(data.showtimes.map((st: Showtime) => st.date)))
+          const dates = Array.from(new Set(data.showtimes.map((st: Showtime) => st.date))) as string[]
           setSelectedDate(dates[0])
         }
       } catch (error) {
@@ -100,13 +102,17 @@ export default function MovieDetailPage() {
     return new Date(dateString).toLocaleDateString("en-US", options)
   }
 
+  // Update the handleShowtimeSelect function to check for username
   const handleShowtimeSelect = (showtime: Showtime) => {
-    if (!isAuthenticated) {
+    const username = localStorage.getItem("username")
+
+    if (!username) {
       toast({
         title: "Login required",
         description: "Please login to book tickets.",
         variant: "destructive",
       })
+      router.push("/login")
       return
     }
 
@@ -114,14 +120,48 @@ export default function MovieDetailPage() {
     setIsDialogOpen(true)
   }
 
+  // Update the handleReservation function to include the username
   const handleReservation = async () => {
     if (!selectedShowtime) return
 
-    try {
-      await reservationsAPI.create({
-        showtimeId: selectedShowtime.id,
-        ticketCount,
+    const username = localStorage.getItem("username")
+
+    if (!username) {
+      toast({
+        title: "Login required",
+        description: "Please login to book tickets.",
+        variant: "destructive",
       })
+      router.push("/login")
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      // Direct fetch call with proper headers
+      const response = await fetch("http://localhost:8000/api/reservations/create/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "include", // Important for sending cookies
+        body: JSON.stringify({
+          showtime_id: selectedShowtime.id,
+          ticket_count: ticketCount,
+          username: username, // Include the username
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Reservation error:", response.status, errorData)
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
 
       toast({
         title: "Reservation successful",
@@ -130,16 +170,24 @@ export default function MovieDetailPage() {
 
       setIsDialogOpen(false)
       setTicketCount(1)
+
+      // Redirect to reservations page after successful booking
+      setTimeout(() => {
+        router.push("/reservations")
+      }, 1500)
     } catch (error) {
+      console.error("Error making reservation:", error)
       toast({
         title: "Reservation failed",
         description: "There was an error making your reservation. Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  // Handle rating update
+  // Update the handleRatingSubmitted function to include the username
   const handleRatingSubmitted = async () => {
     if (id) {
       try {
@@ -297,7 +345,7 @@ export default function MovieDetailPage() {
 
               <TabsContent value="ratings" className="pt-4">
                 <div className="space-y-8">
-                  {isAuthenticated && <MovieRatingForm movieId={movie.id} onRatingSubmitted={handleRatingSubmitted} />}
+                  <MovieRatingForm movieId={movie.id} onRatingSubmitted={handleRatingSubmitted} />
 
                   <div>
                     <h3 className="text-xl font-semibold mb-4">User Reviews</h3>
@@ -358,10 +406,12 @@ export default function MovieDetailPage() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button onClick={handleReservation}>Confirm Reservation</Button>
+              <Button onClick={handleReservation} disabled={isSubmitting}>
+                {isSubmitting ? "Processing..." : "Confirm Reservation"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -47,7 +47,20 @@ export default function ReservationsPage() {
   useEffect(() => {
     const fetchReservations = async () => {
       try {
-        const data = await reservationsAPI.getUserReservations()
+        const username = localStorage.getItem("username")
+
+        if (!username) {
+          // Handle case where no username is found
+          toast({
+            title: "Error",
+            description: "Please log in to view your reservations.",
+            variant: "destructive",
+          })
+          setIsLoading(false)
+          return
+        }
+
+        const data = await reservationsAPI.getUserReservations(username)
         setReservations(data)
       } catch (error) {
         toast({
@@ -70,8 +83,19 @@ export default function ReservationsPage() {
   }
 
   const handleCancelReservation = async (reservationId: string) => {
+    const username = localStorage.getItem("username")
+
+    if (!username) {
+      toast({
+        title: "Error",
+        description: "You need to be logged in to cancel reservations.",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
-      await reservationsAPI.cancel(reservationId)
+      await reservationsAPI.cancel(reservationId, username)
 
       // Update local state
       setReservations(reservations.map((r) => (r.id === reservationId ? { ...r, status: "cancelled" } : r)))
