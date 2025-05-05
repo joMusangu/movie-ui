@@ -71,7 +71,7 @@ export default function MovieDetailPage() {
 
         if (data && data.showtimes.length > 0) {
           // Set default selected date to the first available date
-          const dates = Array.from(new Set(data.showtimes.map((st: Showtime) => st.date))) as string[]
+          const dates = Array.from(new Set(data.showtimes.map((st: Showtime) => st.date)))
           setSelectedDate(dates[0])
         }
       } catch (error) {
