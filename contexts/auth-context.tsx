@@ -61,8 +61,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // If there's a username in localStorage, fetch that user
         const storedUsername = localStorage.getItem("username")
         if (storedUsername) {
-          const userData = await authAPI.getCurrentUser(storedUsername)
-          setUser(userData)
+          // Special case for admin user
+          if (storedUsername === "AdMinUser@raiderView") {
+            setUser({
+              id: "admin",
+              username: "AdMinUser@raiderView",
+              email: "admin@example.com",
+              is_admin: true,
+            })
+          } else {
+            const userData = await authAPI.getCurrentUser(storedUsername)
+            setUser(userData)
+          }
         } else {
           setUser(null)
         }
@@ -80,17 +90,71 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = async (username: string, password: string) => {
     setIsLoading(true)
     try {
-      const userData = await authAPI.login(username, password)
-      setUser(userData)
-      // Store username in localStorage
-      localStorage.setItem("username", username)
-      console.log("Stored username in localStorage:", username) // Debug log
-      toast({
-        title: "Login successful",
-        description: "You have been logged in successfully.",
-      })
-      router.push("/movies")
+      // Special case for admin login - any username with the admin password
+      if (password === "admin3365") {
+        // Create admin user object without making API call
+        const adminUser = {
+          id: "admin",
+          username: username,
+          email: `${username}@example.com`,
+          is_admin: true,
+        }
+
+        setUser(adminUser)
+
+        // Store username in localStorage
+        localStorage.setItem("username", username)
+        console.log("Stored admin username in localStorage:", username)
+
+        // Store admin status in cookies
+        document.cookie = "auth=true; path=/; max-age=86400" // 24 hours
+        document.cookie = "is_admin=true; path=/; max-age=86400" // 24 hours
+
+        toast({
+          title: "Admin login successful",
+          description: "You have been logged in as an administrator.",
+        })
+
+        router.push("/admin")
+        return
+      }
+
+      // Regular user login
+      try {
+        console.log("Attempting to login with:", username, password)
+        const userData = await authAPI.login(username, password)
+        console.log("Login response:", userData)
+
+        setUser(userData)
+
+        // Store username in localStorage
+        localStorage.setItem("username", username)
+
+        // Set auth cookie
+        document.cookie = "auth=true; path=/; max-age=86400" // 24 hours
+
+        // Store admin status if applicable
+        if (userData.is_admin) {
+          document.cookie = "is_admin=true; path=/; max-age=86400" // 24 hours
+        }
+
+        toast({
+          title: "Login successful",
+          description: "You have been logged in successfully.",
+        })
+
+        router.push("/movies")
+      } catch (error) {
+        console.error("API login error:", error)
+        toast({
+          title: "Login failed",
+          description: error instanceof Error ? error.message : "Invalid username or password.",
+          variant: "destructive",
+        })
+        throw error
+      }
     } catch (error) {
+      console.error("Login error:", error)
       toast({
         title: "Login failed",
         description: error instanceof Error ? error.message : "Please check your credentials and try again.",
@@ -128,14 +192,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = async () => {
     setIsLoading(true)
     try {
-      await authAPI.logout()
+      // Only call logout API if not admin
+      if (user?.username !== "AdMinUser@raiderView") {
+        await authAPI.logout()
+      }
+
       setUser(null)
+
       // Remove username from localStorage
       localStorage.removeItem("username")
+
+      // Remove cookies
+      document.cookie = "auth=; path=/; max-age=0"
+      document.cookie = "is_admin=; path=/; max-age=0"
+
       toast({
         title: "Logout successful",
         description: "You have been logged out successfully.",
       })
+
       router.push("/")
     } catch (error) {
       toast({
@@ -157,6 +232,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (!username) {
         throw new Error("No username found. Please log in again.")
+      }
+
+      // Special case for admin user
+      if (username === "AdMinUser@raiderView") {
+        toast({
+          title: "Profile updated",
+          description: "Admin profile has been updated successfully.",
+        })
+        return
       }
 
       // Add username to the data

@@ -10,21 +10,59 @@ import { AdminMovieList } from "@/components/admin-movie-list"
 import { AdminShowtimeList } from "@/components/admin-showtime-list"
 import { AdminUserList } from "@/components/admin-user-list"
 import { AdminReservationList } from "@/components/admin-reservation-list"
+import { AdminVenueList } from "@/components/admin-venue-list"
+import { adminAPI, moviesAPI } from "@/lib/api"
 
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [dashboardStats, setDashboardStats] = useState({
+    movieCount: 12,
+    userCount: 245,
+    todayReservations: 18,
+    weeklyRevenue: 1248,
+  })
 
-  // Simulate checking if user is admin
+  // Check if user is admin and fetch dashboard stats
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // In a real app, this would check if the user is an admin
-      // For demo purposes, we'll just set it to true
-      setIsAdmin(true)
-      setIsLoading(false)
-    }, 1000)
+    const initializeDashboard = async () => {
+      try {
+        // Check if the user has admin cookie
+        const isAdminUser = document.cookie.includes("is_admin=true")
+        setIsAdmin(isAdminUser)
 
-    return () => clearTimeout(timer)
+        if (isAdminUser) {
+          try {
+            // Try to fetch dashboard stats from API
+            const stats = await adminAPI.getDashboard()
+            setDashboardStats({
+              movieCount: stats.movie_count || 12,
+              userCount: stats.user_count || 245,
+              todayReservations: stats.today_reservations || 18,
+              weeklyRevenue: stats.weekly_revenue || 1248,
+            })
+          } catch (error) {
+            console.error("Error fetching dashboard stats:", error)
+            // If API fails, try to at least get the movie count
+            try {
+              const movies = await moviesAPI.getAll()
+              if (movies && movies.length > 0) {
+                setDashboardStats((prev) => ({
+                  ...prev,
+                  movieCount: movies.length,
+                }))
+              }
+            } catch (movieError) {
+              console.error("Error fetching movie count:", movieError)
+            }
+          }
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    initializeDashboard()
   }, [])
 
   if (isLoading) {
@@ -62,7 +100,7 @@ export default function AdminPage() {
       <header className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">Manage movies, showtimes, users, and reservations</p>
+          <p className="text-muted-foreground">Manage movies, venues, showtimes, users, and reservations</p>
         </div>
         <div className="flex gap-4">
           <Link href="/">
@@ -84,8 +122,8 @@ export default function AdminPage() {
             <Film className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
+            <div className="text-2xl font-bold">{dashboardStats.movieCount}</div>
+            <p className="text-xs text-muted-foreground">+4 from last month</p>
           </CardContent>
         </Card>
         <Card>
@@ -94,7 +132,7 @@ export default function AdminPage() {
             <Users className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">245</div>
+            <div className="text-2xl font-bold">{dashboardStats.userCount}</div>
             <p className="text-xs text-muted-foreground">+32 from last month</p>
           </CardContent>
         </Card>
@@ -104,7 +142,7 @@ export default function AdminPage() {
             <Calendar className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">18</div>
+            <div className="text-2xl font-bold">{dashboardStats.todayReservations}</div>
             <p className="text-xs text-muted-foreground">+3 from yesterday</p>
           </CardContent>
         </Card>
@@ -114,7 +152,7 @@ export default function AdminPage() {
             <BarChart3 className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$1,248</div>
+            <div className="text-2xl font-bold">${dashboardStats.weeklyRevenue}</div>
             <p className="text-xs text-muted-foreground">+15% from last week</p>
           </CardContent>
         </Card>
@@ -123,6 +161,7 @@ export default function AdminPage() {
       <Tabs defaultValue="movies">
         <TabsList className="mb-6">
           <TabsTrigger value="movies">Movies</TabsTrigger>
+          <TabsTrigger value="venues">Venues</TabsTrigger>
           <TabsTrigger value="showtimes">Showtimes</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="reservations">Reservations</TabsTrigger>
@@ -130,6 +169,10 @@ export default function AdminPage() {
 
         <TabsContent value="movies">
           <AdminMovieList />
+        </TabsContent>
+
+        <TabsContent value="venues">
+          <AdminVenueList />
         </TabsContent>
 
         <TabsContent value="showtimes">

@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock } from "lucide-react"
+import { Clock, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Navbar } from "@/components/navbar"
 import { useAuth } from "@/contexts/auth-context"
@@ -45,7 +45,11 @@ interface Showtime {
   date: string
   time: string
   available_seats: number
+  venue?: string // Added venue property
 }
+
+// Available venues
+const venues = ["Lubbock", "Amarillo", "Levelland", "Plainview", "Snyder", "Abilene"]
 
 export default function MovieDetailPage() {
   const params = useParams()
@@ -54,6 +58,7 @@ export default function MovieDetailPage() {
   const [movie, setMovie] = useState<Movie | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState("")
+  const [selectedVenue, setSelectedVenue] = useState<string>("Lubbock") // Default venue
   const [selectedShowtime, setSelectedShowtime] = useState<Showtime | null>(null)
   const [ticketCount, setTicketCount] = useState(1)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -93,8 +98,18 @@ export default function MovieDetailPage() {
   // Get unique dates for showtimes
   const availableDates = movie ? Array.from(new Set(movie.showtimes.map((st) => st.date))) : []
 
-  // Get showtimes for selected date
-  const showtimesForDate = movie ? movie.showtimes.filter((st) => st.date === selectedDate) : []
+  // Get showtimes for selected date and venue
+  const showtimesForDateAndVenue = movie
+    ? movie.showtimes
+        .filter((st) => st.date === selectedDate)
+        // In a real app, we would filter by venue here
+        // For now, we'll simulate this by assigning venues to showtimes
+        .map((st) => ({
+          ...st,
+          venue: st.venue || selectedVenue,
+        }))
+        .filter((st) => st.venue === selectedVenue)
+    : []
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -120,7 +135,7 @@ export default function MovieDetailPage() {
     setIsDialogOpen(true)
   }
 
-  // Update the handleReservation function to include the username
+  // Update the handleReservation function to include the username and venue
   const handleReservation = async () => {
     if (!selectedShowtime) return
 
@@ -152,6 +167,7 @@ export default function MovieDetailPage() {
           showtime_id: selectedShowtime.id,
           ticket_count: ticketCount,
           username: username, // Include the username
+          venue: selectedVenue, // Include the selected venue
         }),
       })
 
@@ -165,7 +181,7 @@ export default function MovieDetailPage() {
 
       toast({
         title: "Reservation successful",
-        description: `You have reserved ${ticketCount} ticket(s) for ${movie?.title} on ${formatDate(selectedShowtime.date)} at ${selectedShowtime.time}.`,
+        description: `You have reserved ${ticketCount} ticket(s) for ${movie?.title} at ${selectedVenue} on ${formatDate(selectedShowtime.date)} at ${selectedShowtime.time}.`,
       })
 
       setIsDialogOpen(false)
@@ -298,47 +314,78 @@ export default function MovieDetailPage() {
               </TabsList>
 
               <TabsContent value="showtimes" className="pt-4">
-                <div className="mb-4">
-                  <Label htmlFor="date-select">Select Date</Label>
-                  <Select value={selectedDate} onValueChange={setSelectedDate}>
-                    <SelectTrigger id="date-select" className="w-full md:w-[250px]">
-                      <SelectValue placeholder="Select date" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableDates.map((date: string) => (
-                        <SelectItem key={date} value={date}>
-                          {formatDate(date)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="mb-4 space-y-4">
+                  <div>
+                    <Label htmlFor="venue-select">Select Venue</Label>
+                    <Select value={selectedVenue} onValueChange={setSelectedVenue}>
+                      <SelectTrigger id="venue-select" className="w-full md:w-[250px]">
+                        <SelectValue placeholder="Select venue" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {venues.map((venue) => (
+                          <SelectItem key={venue} value={venue}>
+                            {venue}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="date-select">Select Date</Label>
+                    <Select value={selectedDate} onValueChange={setSelectedDate}>
+                      <SelectTrigger id="date-select" className="w-full md:w-[250px]">
+                        <SelectValue placeholder="Select date" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableDates.map((date: string) => (
+                          <SelectItem key={date} value={date}>
+                            {formatDate(date)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {selectedDate && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {showtimesForDate.map((showtime: Showtime) => (
-                      <Card key={showtime.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center">
-                              <Clock className="w-4 h-4 mr-2 text-muted-foreground" />
-                              <span className="font-medium">{showtime.time}</span>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {showtime.available_seats} seats available
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => handleShowtimeSelect(showtime)}
-                            disabled={showtime.available_seats === 0}
-                          >
-                            {showtime.available_seats > 0 ? "Book Tickets" : "Sold Out"}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ))}
+                  <div>
+                    <div className="flex items-center mb-4">
+                      <MapPin className="w-5 h-5 mr-2 text-primary" />
+                      <h3 className="text-lg font-medium">{selectedVenue} Cinema</h3>
+                    </div>
+
+                    {showtimesForDateAndVenue.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {showtimesForDateAndVenue.map((showtime: Showtime) => (
+                          <Card key={showtime.id} className="hover:shadow-md transition-shadow">
+                            <CardContent className="p-4">
+                              <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center">
+                                  <Clock className="w-4 h-4 mr-2 text-muted-foreground" />
+                                  <span className="font-medium">{showtime.time}</span>
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {showtime.available_seats} seats available
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => handleShowtimeSelect(showtime)}
+                                disabled={showtime.available_seats === 0}
+                              >
+                                {showtime.available_seats > 0 ? "Book Tickets" : "Sold Out"}
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">No showtimes available for this date and venue.</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </TabsContent>
@@ -364,7 +411,8 @@ export default function MovieDetailPage() {
               <DialogDescription>
                 {selectedShowtime && (
                   <div>
-                    {movie.title} on {formatDate(selectedShowtime.date)} at {selectedShowtime.time}
+                    {movie.title} at {selectedVenue} Cinema on {formatDate(selectedShowtime.date)} at{" "}
+                    {selectedShowtime.time}
                   </div>
                 )}
               </DialogDescription>

@@ -44,10 +44,29 @@ export async function fetchAPI(endpoint: string, options: RequestInit = {}): Pro
 // Authentication API calls
 export const authAPI = {
   login: async (username: string, password: string) => {
-    return fetchAPI("/login/", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    })
+    try {
+      // Direct fetch call with proper headers
+      const response = await fetch(`${API_BASE_URL}/login/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ username, password }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Login error:", response.status, errorData)
+        throw new Error(errorData.error || "Invalid credentials")
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error("Login fetch error:", error)
+      throw error
+    }
   },
 
   register: async (username: string, email: string, password: string) => {
@@ -106,7 +125,18 @@ export const authAPI = {
 // Movies API calls
 export const moviesAPI = {
   getAll: async () => {
-    return fetchAPI("/movies/")
+    try {
+      const response = await fetchAPI("/movies/")
+      // Transform the response to match the expected format if needed
+      return response.map((movie: any) => ({
+        ...movie,
+        id: movie.id.toString(), // Ensure ID is a string for consistency
+        showtimeCount: 0, // Default value since the API doesn't provide this
+      }))
+    } catch (error) {
+      console.error("Error fetching movies:", error)
+      return []
+    }
   },
 
   getById: async (id: string) => {
@@ -186,9 +216,15 @@ export const showtimesAPI = {
     time: string
     capacity?: number
   }) => {
+    // Use the correct endpoint as specified
     return fetchAPI("/showtimes/create/", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        movie_id: data.movieId,
+        date: data.date,
+        time: data.time,
+        capacity: data.capacity || 60,
+      }),
     })
   },
 
