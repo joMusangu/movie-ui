@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, MapPin } from "lucide-react"
+import { Clock, MapPin, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Navbar } from "@/components/navbar"
 import { useAuth } from "@/contexts/auth-context"
@@ -25,6 +25,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StarRating } from "@/components/star-rating"
 import { MovieRatingForm } from "@/components/movie-rating-form"
 import { MovieRatingsList } from "@/components/movie-rating-list"
+import { Input } from "@/components/ui/input"
+import { CreditCardInput } from "@/components/credit-card-input"
+import { ExpiryDateInput } from "@/components/expiry-date-input"
+import { CVCInput } from "@/components/cvc-input"
 
 interface Movie {
   id: string
@@ -67,6 +71,13 @@ export default function MovieDetailPage() {
   const { toast } = useToast()
   const { isAuthenticated, user } = useAuth()
 
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
+  const [cardNumber, setCardNumber] = useState("")
+  const [cardExpiry, setCardExpiry] = useState("")
+  const [cardCVC, setCardCVC] = useState("")
+  const [cardName, setCardName] = useState("")
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+
   // Fetch movie details from API
   useEffect(() => {
     const fetchMovie = async () => {
@@ -76,7 +87,7 @@ export default function MovieDetailPage() {
 
         if (data && data.showtimes.length > 0) {
           // Set default selected date to the first available date
-          const dates = Array.from(new Set(data.showtimes.map((st: Showtime) => st.date)))
+          const dates = Array.from(new Set(data.showtimes.map((st: Showtime) => st.date))) as string[]
           setSelectedDate(dates[0])
         }
       } catch (error) {
@@ -151,10 +162,34 @@ export default function MovieDetailPage() {
       return
     }
 
-    setIsSubmitting(true)
+    // Close the ticket selection dialog and open the payment dialog
+    setIsDialogOpen(false)
+    setIsPaymentDialogOpen(true)
+  }
+
+  // Add a new function to handle payment submission
+  const handlePaymentSubmit = async () => {
+    if (!selectedShowtime) return
+
+    const username = localStorage.getItem("username")
+
+    if (!username) {
+      toast({
+        title: "Login required",
+        description: "Please login to book tickets.",
+        variant: "destructive",
+      })
+      router.push("/login")
+      return
+    }
+
+    setIsProcessingPayment(true)
 
     try {
-      // Direct fetch call with proper headers
+      // Simulate payment processing
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
+      // Process the reservation after "payment" is complete
       const response = await fetch("http://localhost:8000/api/reservations/create/", {
         method: "POST",
         headers: {
@@ -162,12 +197,12 @@ export default function MovieDetailPage() {
           Accept: "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        credentials: "include", // Important for sending cookies
+        credentials: "include",
         body: JSON.stringify({
           showtime_id: selectedShowtime.id,
           ticket_count: ticketCount,
-          username: username, // Include the username
-          venue: selectedVenue, // Include the selected venue
+          username: username,
+          venue: selectedVenue,
         }),
       })
 
@@ -180,17 +215,21 @@ export default function MovieDetailPage() {
       const data = await response.json()
 
       toast({
-        title: "Reservation successful",
-        description: `You have reserved ${ticketCount} ticket(s) for ${movie?.title} at ${selectedVenue} on ${formatDate(selectedShowtime.date)} at ${selectedShowtime.time}.`,
+        title: "Payment successful",
+        description: "Your payment has been processed successfully.",
       })
 
-      setIsDialogOpen(false)
+      setIsPaymentDialogOpen(false)
       setTicketCount(1)
+      setCardNumber("")
+      setCardExpiry("")
+      setCardCVC("")
+      setCardName("")
 
-      // Redirect to reservations page after successful booking
-      setTimeout(() => {
-        router.push("/reservations")
-      }, 1500)
+      // Redirect to payment success page
+      router.push(
+        `/payment-success?id=${data.id}&title=${encodeURIComponent(movie?.title || "")}&date=${encodeURIComponent(formatDate(selectedShowtime.date))}&time=${encodeURIComponent(selectedShowtime.time)}&venue=${encodeURIComponent(selectedVenue)}&tickets=${ticketCount}&total=${ticketCount * 12}`,
+      )
     } catch (error) {
       console.error("Error making reservation:", error)
       toast({
@@ -199,7 +238,7 @@ export default function MovieDetailPage() {
         variant: "destructive",
       })
     } finally {
-      setIsSubmitting(false)
+      setIsProcessingPayment(false)
     }
   }
 
@@ -429,14 +468,11 @@ export default function MovieDetailPage() {
                     <SelectValue placeholder="Select number of tickets" />
                   </SelectTrigger>
                   <SelectContent>
-                    {[...Array(Math.min(8, selectedShowtime?.available_seats || 8))].map((_, i) => {
-                      const num = i + 1
-                      return (
-                        <SelectItem key={num} value={num.toString()}>
-                          {num} {num === 1 ? "ticket" : "tickets"}
-                        </SelectItem>
-                      )
-                    })}
+                    {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num} {num === 1 ? "ticket" : "tickets"}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -459,6 +495,82 @@ export default function MovieDetailPage() {
               </Button>
               <Button onClick={handleReservation} disabled={isSubmitting}>
                 {isSubmitting ? "Processing..." : "Confirm Reservation"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Payment Information</DialogTitle>
+              <DialogDescription>
+                {selectedShowtime && (
+                  <div>
+                    {movie.title} at {selectedVenue} Cinema on {formatDate(selectedShowtime.date)} at{" "}
+                    {selectedShowtime.time}
+                  </div>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="card-name">Name on Card</Label>
+                <Input
+                  id="card-name"
+                  placeholder="John Smith"
+                  value={cardName}
+                  onChange={(e) => setCardName(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="card-number">Card Number</Label>
+                <CreditCardInput value={cardNumber} onChange={setCardNumber} />
+                <p className="text-xs text-muted-foreground">
+                  For testing, use any card number (e.g., 0000 0000 0000 0000)
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="expiry">Expiry Date</Label>
+                  <ExpiryDateInput value={cardExpiry} onChange={setCardExpiry} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cvc">CVC</Label>
+                  <CVCInput value={cardCVC} onChange={setCardCVC} />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between font-bold">
+                  <span>Total:</span>
+                  <span>${(ticketCount * 12).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsPaymentDialogOpen(false)
+                  setIsDialogOpen(true)
+                }}
+                disabled={isProcessingPayment}
+              >
+                Back
+              </Button>
+              <Button onClick={handlePaymentSubmit} disabled={isProcessingPayment}>
+                {isProcessingPayment ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Complete Payment"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
